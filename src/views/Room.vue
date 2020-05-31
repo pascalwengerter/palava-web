@@ -1,7 +1,7 @@
 <template>
   <div class="room">
     <transition name="fade">
-      <WaitingForUserMedia v-if="waiting" />
+      <ScreenMessage :message="screenMessage" v-if="screenMessage" />
     </transition>
 
     <transition name="fade">
@@ -31,20 +31,20 @@ import { createSession, createIdentity } from "@/webrtc"
 import { fancyNumber } from "@/support"
 
 import UserMediaConfigurator from "@/components/UserMediaConfigurator.vue"
-import WaitingForUserMedia from "@/components/WaitingForUserMedia.vue"
+import ScreenMessage from "@/components/ScreenMessage.vue"
 import InfoScreen from "@/components/InfoScreen.vue"
 import RoomError from "@/components/RoomError.vue"
 import Party from "@/components/Party.vue"
 
 export default {
   components: {
-    WaitingForUserMedia,
+    ScreenMessage,
     InfoScreen,
   },
   data() {
     return {
       uiState: [UserMediaConfigurator, {}],
-      waiting: false,
+      screenMessage: null,
       peers: [],
       localPeer: null,
       infoPage: null,
@@ -101,7 +101,7 @@ export default {
 
       rtc.on("local_stream_error", (error) => {
         logger.error("local stream error", error)
-        this.waiting = false
+        this.screenMessage = null
         this.uiState = [UserMediaConfigurator, { error: "local_stream_error" }]
       })
 
@@ -112,14 +112,14 @@ export default {
 
       rtc.on("room_join_error", () => {
         logger.error("room join error")
+        this.screenMessage = null
         this.uiState = [RoomError, { error: "connection_error" }]
-        this.waiting = false
       })
 
       rtc.on("room_full", () => {
         logger.error("room full")
+        this.screenMessage = null
         this.uiState = [RoomError, { error: "room_full" }]
-        this.waiting = false
       })
 
       rtc.on("room_joined", (room) => {
@@ -130,16 +130,16 @@ export default {
         this.repeatedReconnect = false
 
         if (peers.length > config.maximumPeers) {
+          this.screenMessage = null
           this.uiState = [RoomError, { error: "room_full" }]
-          this.waiting = false
           this.rtc.destroy()
           return
         }
 
         this.peers = peers
         this.localPeer = this.rtc.room.getLocalPeer()
+        this.screenMessage = null
         this.uiState = [Party]
-        this.waiting = false
       })
 
       rtc.on("peer_joined", (peer) => {
@@ -197,7 +197,7 @@ export default {
       return rtc
     },
     joinRoom(userMediaConfig) {
-      this.waiting = true
+      this.screenMessage = this.$t('room.waitingForUserMedia')
 
       this.rtc.init({
         identity: createIdentity(userMediaConfig),
@@ -208,8 +208,9 @@ export default {
       })
     },
     reconnectRtc() {
+      console.log('trying to reconnect')
       if (this.signalingConnectedBefore) {
-        // TODO: show "Palava server not reachable" or "Network not reachable" overlay
+        this.screenMessage = this.$t('room.waitingForRoomServer')
         window.addEventListener('online', this.onlineEventListener)
         if (navigator.onLine) window.dispatchEvent(new Event('online'))
       } else {
@@ -217,9 +218,12 @@ export default {
       }
     },
     onlineEventListener() {
+      console.log('now online')
       if (this.repeatedReconnect) {
+        console.log('reconnect again!')
         setTimeout(this.rtc.reconnect, config.reconnectTimeout)
       } else {
+        console.log('reconnect first!')
         this.repeatedReconnect = true
         this.rtc.reconnect()
       }
